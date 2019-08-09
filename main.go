@@ -35,6 +35,7 @@ func main() {
 			Type: "Bearer",
 			Authenticate: func(req *http.Request) bool {
 				reqToken := req.Header.Get("Proxy-Authenticate")
+				req.Header.Del("Proxy-Authenticate")
 				return subtle.ConstantTimeCompare([]byte(reqToken), []byte(*token)) == 1
 			},
 		})
