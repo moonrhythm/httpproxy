@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/moonrhythm/parapet"
 	"github.com/moonrhythm/parapet/pkg/authn"
@@ -16,11 +17,16 @@ import (
 var (
 	token     = flag.String("token", "", "Bearer Token for Proxy-Authenticate")
 	port      = flag.String("port", "18888", "Port to start server")
+	bufferSize = flag.Int64("buffer", 32 * 1024, "Buffer Size")
 	enableLog = flag.Bool("log", false, "Enable log to stderr")
 )
 
 func main() {
 	flag.Parse()
+
+	if *bufferSize <= 0 {
+		log.Fatal("invalid buffer size")
+	}
 
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		*port = envPort
@@ -81,8 +87,8 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 
-	go io.Copy(upstream, client)
-	io.Copy(client, upstream)
+	go copyBuffer(upstream, client)
+	copyBuffer(client, upstream)
 }
 
 func handleHTTP(w http.ResponseWriter, r *http.Request) {
@@ -98,5 +104,17 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	copyBuffer(w, resp.Body)
+}
+
+func copyBuffer(dst io.Writer, src io.ReadCloser) {
+	buf := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buf)
+	io.CopyBuffer(dst, src, buf)
+}
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, *bufferSize)
+	},
 }
