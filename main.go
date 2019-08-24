@@ -15,10 +15,10 @@ import (
 )
 
 var (
-	token     = flag.String("token", "", "Bearer Token for Proxy-Authenticate")
-	port      = flag.String("port", "18888", "Port to start server")
-	bufferSize = flag.Int64("buffer", 32 * 1024, "Buffer Size")
-	enableLog = flag.Bool("log", false, "Enable log to stderr")
+	token      = flag.String("token", "", "Bearer Token for Proxy-Authenticate")
+	port       = flag.String("port", "18888", "Port to start server")
+	bufferSize = flag.Int64("buffer", 32*1024, "Buffer Size")
+	enableLog  = flag.Bool("log", false, "Enable log to stderr")
 )
 
 func main() {
@@ -46,46 +46,45 @@ func main() {
 			},
 		})
 	}
-	log.Println("start httpproxy at 0.0.0.0:" + *port)
+
+	log.Println("httpproxy")
+	log.Println("port:", *port)
+	log.Println("buffer:", *bufferSize)
 	log.Fatal(srv.ListenAndServe())
 }
 
 func proxy(w http.ResponseWriter, r *http.Request) {
-	if *enableLog {
-		log.Printf("%s %s", r.Method, r.RequestURI)
-	}
-
 	if r.Method == http.MethodConnect {
+		if *enableLog {
+			log.Printf("%s %s", r.Method, r.RequestURI)
+		}
 		handleTunnel(w, r)
 		return
 	}
 
+	if *enableLog {
+		log.Printf("%s %s", r.Method, r.Host)
+	}
 	handleHTTP(w, r)
 }
 
 func handleTunnel(w http.ResponseWriter, r *http.Request) {
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "Proxy not support hijacker", http.StatusInternalServerError)
-		return
-	}
-
-	// dial to upstream
-	upstream, err := net.Dial("tcp", r.Host)
+	upstream, err := net.Dial("tcp", r.RequestURI)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	defer upstream.Close()
 
-	w.WriteHeader(http.StatusOK)
-
-	client, _, err := hijacker.Hijack()
+	client, wr, err := w.(http.Hijacker).Hijack()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer client.Close()
+
+	wr.WriteString("HTTP/1.1 200 OK\n\n")
+	wr.Flush()
 
 	go copyBuffer(upstream, client)
 	copyBuffer(client, upstream)
