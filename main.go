@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/moonrhythm/parapet"
@@ -91,6 +92,11 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.RequestURI, "http://") {
+		http.NotFound(w, r)
+		return
+	}
+
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
