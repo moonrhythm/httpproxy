@@ -63,12 +63,8 @@ func main() {
 				if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 					return false
 				}
-				c, err := base64.StdEncoding.DecodeString(auth[len(prefix):])
-				if err != nil {
-					return false
-				}
 
-				return subtle.ConstantTimeCompare(c, []byte(authStr)) == 1
+				return subtle.ConstantTimeCompare([]byte(auth[len(prefix):]), []byte(authStr)) == 1
 			},
 		})
 	}
