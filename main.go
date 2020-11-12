@@ -44,6 +44,7 @@ func main() {
 		srv.Use(authn.Authenticator{
 			Type: "Bearer",
 			Authenticate: func(req *http.Request) bool {
+				// TODO: change to Proxy-Authorization but breaking change
 				reqToken := req.Header.Get("Proxy-Authenticate")
 				req.Header.Del("Proxy-Authenticate")
 				return subtle.ConstantTimeCompare([]byte(reqToken), []byte(*token)) == 1
@@ -55,8 +56,8 @@ func main() {
 		srv.Use(authn.Authenticator{
 			Type: "Basic",
 			Authenticate: func(req *http.Request) bool {
-				auth := req.Header.Get("Proxy-Authenticate")
-				req.Header.Del("Proxy-Authenticate")
+				auth := req.Header.Get("Proxy-Authorization")
+				req.Header.Del("Proxy-Authorization")
 
 				const prefix = "Basic "
 				if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
