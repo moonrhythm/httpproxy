@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"flag"
 	"io"
 	"log"
@@ -17,6 +18,8 @@ import (
 
 var (
 	token      = flag.String("token", "", "Bearer Token for Proxy-Authenticate")
+	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authenticate")
+	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authenticate")
 	port       = flag.String("port", "18888", "Port to start server")
 	bufferSize = flag.Int64("buffer", 32*1024, "Buffer Size")
 	enableLog  = flag.Bool("log", false, "Enable log to stderr")
@@ -44,6 +47,27 @@ func main() {
 				reqToken := req.Header.Get("Proxy-Authenticate")
 				req.Header.Del("Proxy-Authenticate")
 				return subtle.ConstantTimeCompare([]byte(reqToken), []byte(*token)) == 1
+			},
+		})
+	}
+	if *authUser != "" && *authPass != "" {
+		authStr := base64.StdEncoding.EncodeToString([]byte(*authUser + ":" + *authPass))
+		srv.Use(authn.Authenticator{
+			Type: "Basic",
+			Authenticate: func(req *http.Request) bool {
+				auth := req.Header.Get("Proxy-Authenticate")
+				req.Header.Del("Proxy-Authenticate")
+
+				const prefix = "Basic "
+				if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+					return false
+				}
+				c, err := base64.StdEncoding.DecodeString(auth[len(prefix):])
+				if err != nil {
+					return false
+				}
+
+				return subtle.ConstantTimeCompare(c, []byte(authStr)) == 1
 			},
 		})
 	}
