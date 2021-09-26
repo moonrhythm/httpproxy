@@ -1,6 +1,5 @@
-FROM gcr.io/moonrhythm-containers/alpine:3.12
+FROM gcr.io/distroless/static
 
-RUN mkdir -p /app
 WORKDIR /app
 
 COPY httpproxy ./
