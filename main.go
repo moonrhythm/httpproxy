@@ -17,9 +17,9 @@ import (
 )
 
 var (
-	token      = flag.String("token", "", "Bearer Token for Proxy-Authenticate")
-	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authenticate")
-	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authenticate")
+	token      = flag.String("token", "", "Bearer Token for Proxy-Authorization")
+	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authorization")
+	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authorization")
 	port       = flag.String("port", "18888", "Port to start server")
 	bufferSize = flag.Int64("buffer", 32*1024, "Buffer Size")
 	enableLog  = flag.Bool("log", false, "Enable log to stderr")
@@ -43,11 +43,14 @@ func main() {
 	if *token != "" {
 		srv.Use(authn.Authenticator{
 			Type: "Bearer",
-			Authenticate: func(req *http.Request) bool {
+			Authenticate: func(req *http.Request) error {
 				// TODO: change to Proxy-Authorization but breaking change
-				reqToken := req.Header.Get("Proxy-Authenticate")
-				req.Header.Del("Proxy-Authenticate")
-				return subtle.ConstantTimeCompare([]byte(reqToken), []byte(*token)) == 1
+				reqToken := req.Header.Get("Proxy-Authorization")
+				req.Header.Del("Proxy-Authorization")
+				if subtle.ConstantTimeCompare([]byte(reqToken), []byte(*token)) != 1 {
+					return authn.ErrInvalidCredentials
+				}
+				return nil
 			},
 		})
 	}
@@ -55,16 +58,18 @@ func main() {
 		authStr := base64.StdEncoding.EncodeToString([]byte(*authUser + ":" + *authPass))
 		srv.Use(authn.Authenticator{
 			Type: "Basic",
-			Authenticate: func(req *http.Request) bool {
+			Authenticate: func(req *http.Request) error {
 				auth := req.Header.Get("Proxy-Authorization")
 				req.Header.Del("Proxy-Authorization")
 
 				const prefix = "Basic "
 				if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
-					return false
+					return authn.ErrInvalidCredentials
 				}
-
-				return subtle.ConstantTimeCompare([]byte(auth[len(prefix):]), []byte(authStr)) == 1
+				if subtle.ConstantTimeCompare([]byte(auth[len(prefix):]), []byte(authStr)) != 1 {
+					return authn.ErrInvalidCredentials
+				}
+				return nil
 			},
 		})
 	}
