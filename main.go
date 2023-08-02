@@ -11,9 +11,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/moonrhythm/parapet"
 	"github.com/moonrhythm/parapet/pkg/authn"
+	"github.com/moonrhythm/parapet/pkg/upstream"
 )
 
 var (
@@ -117,13 +119,25 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	copyBuffer(client, upstream)
 }
 
+var httpTransport = upstream.HTTPTransport{
+	DialTimeout:     5 * time.Second,
+	TCPKeepAlive:    10 * time.Second,
+	MaxIdleConns:    1000,
+	IdleConnTimeout: 1 * time.Minute,
+}
+
 func handleHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.RequestURI, "http://") {
 		http.NotFound(w, r)
 		return
 	}
 
-	resp, err := http.DefaultTransport.RoundTrip(r)
+	// remove headers
+	r.Header.Del("X-Real-Ip")
+	r.Header.Del("X-Forwarded-For")
+	r.Header.Del("X-Forwarded-Proto")
+
+	resp, err := httpTransport.RoundTrip(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
