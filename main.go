@@ -115,8 +115,27 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	wr.WriteString("HTTP/1.1 200 OK\n\n")
 	wr.Flush()
 
-	go copyBuffer(upstream, client)
-	copyBuffer(client, upstream)
+	errc := make(chan error, 1)
+	c := conCopier{
+		src: upstream,
+		dst: client,
+	}
+	go c.copyToDst(errc)
+	go c.copyToSrc(errc)
+	<-errc
+}
+
+type conCopier struct {
+	src net.Conn
+	dst net.Conn
+}
+
+func (c *conCopier) copyToDst(errc chan error) {
+	errc <- copyBuffer(c.src, c.dst)
+}
+
+func (c *conCopier) copyToSrc(errc chan error) {
+	errc <- copyBuffer(c.dst, c.src)
 }
 
 var httpTransport = upstream.HTTPTransport{
@@ -152,10 +171,11 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 	copyBuffer(w, resp.Body)
 }
 
-func copyBuffer(dst io.Writer, src io.ReadCloser) {
+func copyBuffer(dst io.Writer, src io.ReadCloser) error {
 	buf := bufferPool.Get().([]byte)
 	defer bufferPool.Put(buf)
-	io.CopyBuffer(dst, src, buf)
+	_, err := io.CopyBuffer(dst, src, buf)
+	return err
 }
 
 var bufferPool = sync.Pool{
