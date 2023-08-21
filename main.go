@@ -97,8 +97,13 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 	handleHTTP(w, r)
 }
 
+var dialer = net.Dialer{
+	Timeout:   5 * time.Second,
+	KeepAlive: 10 * time.Second,
+}
+
 func handleTunnel(w http.ResponseWriter, r *http.Request) {
-	upstream, err := net.Dial("tcp", r.RequestURI)
+	upstream, err := dialer.DialContext(r.Context(), "tcp", r.RequestURI)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
