@@ -23,7 +23,7 @@ var (
 	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authorization")
 	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authorization")
 	port       = flag.String("port", "18888", "Port to start server")
-	bufferSize = flag.Int64("buffer", 32*1024, "Buffer Size")
+	bufferSize = flag.Int64("buffer", 16*1024, "Buffer Size")
 	enableLog  = flag.Bool("log", false, "Enable log to stderr")
 )
 
@@ -177,14 +177,15 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func copyBuffer(dst io.Writer, src io.ReadCloser) error {
-	buf := bufferPool.Get().([]byte)
+	buf := bufferPool.Get().(*[]byte)
 	defer bufferPool.Put(buf)
-	_, err := io.CopyBuffer(dst, src, buf)
+	_, err := io.CopyBuffer(dst, src, *buf)
 	return err
 }
 
 var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, *bufferSize)
+	New: func() any {
+		b := make([]byte, *bufferSize)
+		return &b
 	},
 }
