@@ -23,7 +23,7 @@ var (
 	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authorization")
 	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authorization")
 	port       = flag.String("port", "18888", "Port to start server")
-	bufferSize = flag.Int64("buffer", 16*1024, "Buffer Size")
+	bufferSize = flag.Int64("buffer", 8*1024, "Buffer Size")
 	enableLog  = flag.Bool("log", false, "Enable log to stderr")
 )
 
