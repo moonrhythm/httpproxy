@@ -1,9 +1,0 @@
-steps:
-- name: gcr.io/cloud-builders/docker
-  args: [build, -t, gcr.io/$PROJECT_ID/httpproxy:master, '.']
-- name: gcr.io/cloud-builders/docker
-  args: [tag, gcr.io/$PROJECT_ID/httpproxy:master, gcr.io/$PROJECT_ID/httpproxy:$COMMIT_SHA]
-
-images:
-- gcr.io/$PROJECT_ID/httpproxy:master
-- gcr.io/$PROJECT_ID/httpproxy:$COMMIT_SHA
