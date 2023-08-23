@@ -98,13 +98,14 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 }
 
 var dialer = net.Dialer{
-	Timeout:   5 * time.Second,
-	KeepAlive: 10 * time.Second,
+	Timeout:   10 * time.Second,
+	KeepAlive: 15 * time.Second,
 }
 
 func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	upstream, err := dialer.DialContext(r.Context(), "tcp", r.RequestURI)
 	if err != nil {
+		log.Printf("dial upstream error: %v", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -128,6 +129,10 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	go c.copyToDst(errc)
 	go c.copyToSrc(errc)
 	<-errc
+
+	if *enableLog {
+		log.Printf("tunnel closed: %s", r.RequestURI)
+	}
 }
 
 type conCopier struct {
