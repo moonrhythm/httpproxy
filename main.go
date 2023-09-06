@@ -5,12 +5,11 @@ import (
 	"encoding/base64"
 	"flag"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/moonrhythm/parapet"
@@ -19,20 +18,15 @@ import (
 )
 
 var (
-	token      = flag.String("token", "", "Bearer Token for Proxy-Authorization")
-	authUser   = flag.String("auth-user", "", "Basic User for Proxy-Authorization")
-	authPass   = flag.String("auth-pass", "", "Basic Password for Proxy-Authorization")
-	port       = flag.String("port", "18888", "Port to start server")
-	bufferSize = flag.Int64("buffer", 8*1024, "Buffer Size")
-	enableLog  = flag.Bool("log", false, "Enable log to stderr")
+	token     = flag.String("token", "", "Bearer Token for Proxy-Authorization")
+	authUser  = flag.String("auth-user", "", "Basic User for Proxy-Authorization")
+	authPass  = flag.String("auth-pass", "", "Basic Password for Proxy-Authorization")
+	port      = flag.String("port", "18888", "Port to start server")
+	enableLog = flag.Bool("log", false, "Enable log to stderr")
 )
 
 func main() {
 	flag.Parse()
-
-	if *bufferSize <= 0 {
-		log.Fatal("invalid buffer size")
-	}
 
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		*port = envPort
@@ -76,24 +70,21 @@ func main() {
 		})
 	}
 
-	log.Println("httpproxy")
-	log.Println("port:", *port)
-	log.Println("buffer:", *bufferSize)
-	log.Fatal(srv.ListenAndServe())
+	slog.Info("httpproxy",
+		"port", *port,
+	)
+	err := srv.ListenAndServe()
+	if err != nil {
+		slog.Error("start server error", "error", err)
+	}
 }
 
 func proxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
-		if *enableLog {
-			log.Printf("%s %s", r.Method, r.RequestURI)
-		}
 		handleTunnel(w, r)
 		return
 	}
 
-	if *enableLog {
-		log.Printf("%s %s", r.Method, r.Host)
-	}
 	handleHTTP(w, r)
 }
 
@@ -103,9 +94,13 @@ var dialer = net.Dialer{
 }
 
 func handleTunnel(w http.ResponseWriter, r *http.Request) {
+	if *enableLog {
+		slog.Info("tunnel connect", "addr", r.RequestURI)
+	}
+
 	upstream, err := dialer.DialContext(r.Context(), "tcp", r.RequestURI)
 	if err != nil {
-		log.Printf("dial upstream error: %v", err)
+		slog.Error("dial upstream error", "network", "tcp", "addr", r.RequestURI, "error", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -113,6 +108,7 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 
 	client, wr, err := w.(http.Hijacker).Hijack()
 	if err != nil {
+		slog.Error("hijack error", "addr", r.RequestURI, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -131,7 +127,7 @@ func handleTunnel(w http.ResponseWriter, r *http.Request) {
 	<-errc
 
 	if *enableLog {
-		log.Printf("tunnel closed: %s", r.RequestURI)
+		slog.Info("tunnel closed", "addr", r.RequestURI)
 	}
 }
 
@@ -141,11 +137,13 @@ type conCopier struct {
 }
 
 func (c *conCopier) copyToDst(errc chan error) {
-	errc <- copyBuffer(c.src, c.dst)
+	_, err := io.Copy(c.src, c.dst)
+	errc <- err
 }
 
 func (c *conCopier) copyToSrc(errc chan error) {
-	errc <- copyBuffer(c.dst, c.src)
+	_, err := io.Copy(c.dst, c.src)
+	errc <- err
 }
 
 var httpTransport = upstream.HTTPTransport{
@@ -156,6 +154,10 @@ var httpTransport = upstream.HTTPTransport{
 }
 
 func handleHTTP(w http.ResponseWriter, r *http.Request) {
+	if *enableLog {
+		slog.Info("http", "method", r.Method, "host", r.Host, "path", r.URL.Path)
+	}
+
 	if !strings.HasPrefix(r.RequestURI, "http://") {
 		http.NotFound(w, r)
 		return
@@ -168,6 +170,7 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := httpTransport.RoundTrip(r)
 	if err != nil {
+		slog.Error("http round trip error", "host", r.Host, "error", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -178,19 +181,5 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	copyBuffer(w, resp.Body)
-}
-
-func copyBuffer(dst io.Writer, src io.ReadCloser) error {
-	buf := bufferPool.Get().(*[]byte)
-	defer bufferPool.Put(buf)
-	_, err := io.CopyBuffer(dst, src, *buf)
-	return err
-}
-
-var bufferPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, *bufferSize)
-		return &b
-	},
+	io.Copy(w, resp.Body)
 }
