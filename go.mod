@@ -1,6 +1,6 @@
 module github.com/acoshift/httpproxy
 
-go 1.22.3
+go 1.22.7
 
 require github.com/moonrhythm/parapet v0.13.4
 
